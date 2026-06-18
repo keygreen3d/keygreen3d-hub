@@ -85,10 +85,23 @@ summary{cursor:pointer;color:var(--green);font-weight:900}
 .qtotal strong{font-size:34px;color:#5daa21}
 .obs{margin-top:16px;font-size:13px;line-height:1.45;color:#333}
 .qfoot{margin-top:22px;border-top:1px solid #ddd;padding-top:12px;display:flex;justify-content:space-around;color:#555;font-size:13px;gap:10px;flex-wrap:wrap}
-.quoteActions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:14px}
+.quoteActions{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px}
 #quoteImageOnly{display:none}
+
+.view{display:block}
+.view.hidden{display:none}
+.savedToolbar{display:grid;grid-template-columns:1fr auto auto auto;gap:10px;margin-bottom:14px;align-items:center}
+.savedList{display:grid;gap:12px}
+.savedItem{border:1px solid #264434;border-radius:14px;padding:14px;background:rgba(255,255,255,.035)}
+.savedItemTop{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}
+.savedTitle{font-size:17px;font-weight:900;color:#eafff0}
+.savedMeta{color:var(--muted);font-size:13px;line-height:1.45;margin-top:5px}
+.savedPrice{font-size:22px;font-weight:900;color:var(--green);white-space:nowrap}
+.savedActions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.savedActions button{height:38px;padding:0 12px;width:auto}
+.modeEdit{padding:10px 12px;border:1px solid rgba(36,223,104,.3);background:rgba(36,223,104,.06);border-radius:12px;margin:0 0 14px;color:#ccefd7;font-size:13px;line-height:1.45}
 @media(max-width:1120px){.grid{grid-template-columns:1fr}}
-@media(max-width:620px){.app{padding:10px}.top{position:static;flex-direction:column;align-items:flex-start}.formgrid,.qinfo,.qbody{grid-template-columns:1fr}.quoteActions,.actions{grid-template-columns:1fr}.brand h1{font-size:22px}.qtop{flex-direction:column}.qnum{text-align:left}}
+@media(max-width:620px){.app{padding:10px}.top{position:static;flex-direction:column;align-items:flex-start}.formgrid,.qinfo,.qbody,.savedToolbar{grid-template-columns:1fr}.quoteActions,.actions{grid-template-columns:1fr}.brand h1{font-size:22px}.qtop{flex-direction:column}.qnum{text-align:left}}
 @media print{
   body *{visibility:hidden}
   #quoteCard,#quoteCard *{visibility:visible}
@@ -104,17 +117,17 @@ summary{cursor:pointer;color:var(--green);font-weight:900}
     <div><h1>KEYGREEN3D | HUB</h1><span>Central de Gestão da Produção 3D</span></div>
   </div>
   <div class="nav">
-    <button onclick="calcular()">Calculadora</button>
-    <button onclick="document.getElementById('cliente').focus()">Orçamento</button>
-    <button onclick="window.print()">Exportar PDF</button>
-    <button class="primary" onclick="calcular()">Gerar orçamento</button>
+    <button class="primary" onclick="mostrarAba('calculadora');document.getElementById('cliente').focus()">Gerar Orçamento</button>
+    <button onclick="mostrarAba('salvos')">Orçamentos Salvos</button>
   </div>
 </header>
 
 <div class="app">
+  <div id="abaCalculadora" class="view">
   <div class="grid">
     <section class="card">
       <h2>📄 Dados da impressão</h2>
+      <div id="modoEdicao" class="modeEdit"></div>
       <div class="formgrid">
         <div class="field"><label>Cliente</label><input id="cliente" placeholder="Ex: João Silva"></div>
         <div class="field"><label>Peça</label><input id="peca" placeholder="Ex: Suporte para Controle Xbox"></div>
@@ -143,6 +156,8 @@ summary{cursor:pointer;color:var(--green);font-weight:900}
 
       <div class="actions">
         <button class="primary" onclick="calcular()">CALCULAR PREÇO</button>
+        <button onclick="salvarOrcamento()">SALVAR ORÇAMENTO</button>
+        <button onclick="mostrarAba('salvos')">VER SALVOS</button>
         <button onclick="limpar()">LIMPAR</button>
       </div>
 
@@ -204,9 +219,26 @@ summary{cursor:pointer;color:var(--green);font-weight:900}
       </div>
       <div class="quoteActions">
         <button class="primary" onclick="copiarWhatsApp()">Copiar WhatsApp</button>
+        <button onclick="salvarOrcamento()">Salvar orçamento</button>
         <button onclick="baixarPNG()">Baixar PNG</button>
         <button onclick="window.print()">Baixar PDF</button>
       </div>
+    </section>
+  </div>
+  </div>
+
+  <div id="abaSalvos" class="view hidden">
+    <section class="card">
+      <h2>📚 Orçamentos Salvos</h2>
+      <p class="tip">Os orçamentos ficam salvos neste navegador. Para não perder, use o botão de backup.</p>
+      <div class="savedToolbar">
+        <input id="buscaOrcamentos" placeholder="Buscar por cliente, peça ou número" oninput="renderizarOrcamentos()">
+        <button class="primary" onclick="novoOrcamento()">Novo orçamento</button>
+        <button onclick="exportarOrcamentos()">Exportar backup</button>
+        <button onclick="document.getElementById('arquivoBackup').click()">Importar backup</button>
+        <input id="arquivoBackup" type="file" accept="application/json" style="display:none" onchange="importarOrcamentos(event)">
+      </div>
+      <div id="listaOrcamentos" class="savedList"></div>
     </section>
   </div>
 </div>
@@ -214,6 +246,12 @@ summary{cursor:pointer;color:var(--green);font-weight:900}
 <script>
 let dados = {};
 let imagemPeca = "";
+let orcamentoEditandoId = null;
+let orcamentoNumeroAtual = "";
+const STORAGE_ORCAMENTOS = "keygreen_orcamentos_salvos";
+const STORAGE_CONTADOR_ORCAMENTOS = "keygreen_orcamentos_ultimo_numero";
+const camposOrcamento = ["cliente","peca","material","precoFilamento","metros","lucro","horas","minutos","modelagem","descontoPerc","descontoValor","kwh","consumo","falhas","manutPerc","valorMaquina","meses","horasDia","diasMes","spray"];
+
 
 function moeda(v){return v.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}
 function num(id){return parseFloat(document.getElementById(id).value || 0)}
@@ -221,6 +259,85 @@ function set(id,v){document.getElementById(id).textContent=v}
 function hoje(){
   const d = new Date();
   return d.toLocaleDateString("pt-BR");
+}
+function esc(v){
+  return String(v ?? "").replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m]));
+}
+function mostrarAba(aba){
+  document.getElementById("abaCalculadora").classList.toggle("hidden", aba !== "calculadora");
+  document.getElementById("abaSalvos").classList.toggle("hidden", aba !== "salvos");
+  if(aba === "salvos") renderizarOrcamentos();
+}
+function atualizarModoEdicao(){
+  const el = document.getElementById("modoEdicao");
+  if(!el) return;
+  if(orcamentoEditandoId){
+    el.textContent = "Editando orçamento salvo. Ao clicar em SALVAR ORÇAMENTO, este orçamento será atualizado.";
+  }else{
+    el.textContent = "Novo orçamento. Depois de calcular, clique em SALVAR ORÇAMENTO para guardar na aba Orçamentos Salvos.";
+  }
+}
+function lerOrcamentos(){
+  try{return JSON.parse(localStorage.getItem(STORAGE_ORCAMENTOS) || "[]");}catch(e){return []}
+}
+function gravarOrcamentos(lista){
+  localStorage.setItem(STORAGE_ORCAMENTOS, JSON.stringify(lista));
+}
+function numeroOrcamentoParaInt(numero){
+  return parseInt(String(numero || "").replace(/\D/g,"")) || 0;
+}
+function maiorNumeroDaLista(lista){
+  return lista.reduce((m,o)=>Math.max(m, numeroOrcamentoParaInt(o.numero)), 0);
+}
+function proximoNumeroDisponivel(lista = lerOrcamentos()){
+  const ultimoSalvo = parseInt(localStorage.getItem(STORAGE_CONTADOR_ORCAMENTOS) || "0") || 0;
+  const maiorExistente = maiorNumeroDaLista(lista);
+  const proximo = Math.max(ultimoSalvo, maiorExistente) + 1;
+  return "#" + String(proximo).padStart(5,"0");
+}
+function registrarNumeroUsado(numero){
+  const n = numeroOrcamentoParaInt(numero);
+  const ultimoSalvo = parseInt(localStorage.getItem(STORAGE_CONTADOR_ORCAMENTOS) || "0") || 0;
+  if(n > ultimoSalvo){
+    localStorage.setItem(STORAGE_CONTADOR_ORCAMENTOS, String(n));
+  }
+}
+function sincronizarContador(lista = lerOrcamentos()){
+  const maior = maiorNumeroDaLista(lista);
+  const ultimoSalvo = parseInt(localStorage.getItem(STORAGE_CONTADOR_ORCAMENTOS) || "0") || 0;
+  if(maior > ultimoSalvo){
+    localStorage.setItem(STORAGE_CONTADOR_ORCAMENTOS, String(maior));
+  }
+}
+function atualizarNumeroNovoOrcamento(){
+  if(orcamentoEditandoId) return;
+  orcamentoNumeroAtual = proximoNumeroDisponivel();
+  const el = document.getElementById("orcNumero");
+  if(el) el.textContent = orcamentoNumeroAtual;
+}
+function gerarNumero(lista){
+  const numero = proximoNumeroDisponivel(lista);
+  registrarNumeroUsado(numero);
+  return numero;
+}
+function coletarFormulario(){
+  const form = {};
+  camposOrcamento.forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) form[id] = el.value;
+  });
+  form.usarModelagem = document.getElementById("usarModelagem").checked;
+  return form;
+}
+function preencherFormulario(form){
+  if(!form) return;
+  camposOrcamento.forEach(id=>{
+    const el = document.getElementById(id);
+    if(el && form[id] !== undefined) el.value = form[id];
+  });
+  if(form.usarModelagem !== undefined){
+    document.getElementById("usarModelagem").checked = !!form.usarModelagem;
+  }
 }
 function atualizarPrecoFilamento(){
   const mat = document.getElementById("material");
@@ -294,7 +411,7 @@ function calcular(){
     <div class="resultRow"><span>Preço da impressão 3D</span><b>${moeda(impressao)}</b></div>
     <div class="resultRow"><span>Modelagem</span><b>${moeda(modelagem)}</b></div>
     <div class="resultRow"><span>Subtotal</span><b>${moeda(subtotal)}</b></div>
-    <div class="resultRow"><span>Desconto</span><b>${desconto > 0 ? "- " + moeda(desconto) : moeda(0)}</b></div>`;
+    <div class="resultRow"><span>Desconto</span><b>- ${moeda(desconto)}</b></div>`;
   set("total",moeda(total));
 
   set("qCliente",document.getElementById("cliente").value || "Cliente não informado");
@@ -305,7 +422,7 @@ function calcular(){
   set("qImpressao",moeda(impressao));
   set("qModelagem",moeda(modelagem));
   set("qSubtotal",moeda(subtotal));
-  set("qDesconto",desconto > 0 ? "- " + moeda(desconto) : moeda(0));
+  set("qDesconto","- " + moeda(desconto));
   set("qTotal",moeda(total));
   set("dataHoje","Data: "+hoje());
   salvarConfig();
@@ -316,7 +433,161 @@ function limpar(){
   document.getElementById("modelagem").value="0.00";
   document.getElementById("descontoPerc").value=0;
   document.getElementById("descontoValor").value="0.00";
+  document.getElementById("imgPeca").value="";
+  imagemPeca = "";
+  orcamentoEditandoId = null;
+  atualizarNumeroNovoOrcamento();
+  document.getElementById("qFoto").innerHTML = "Imagem da peça<br><small>opcional</small>";
+  atualizarModoEdicao();
   calcular();
+}
+function novoOrcamento(){
+  mostrarAba("calculadora");
+  limpar();
+  window.scrollTo({top:0,behavior:"smooth"});
+}
+function salvarOrcamento(){
+  calcular();
+  const lista = lerOrcamentos();
+  const existente = lista.find(o => o.id === orcamentoEditandoId);
+  const agora = new Date().toISOString();
+  const registro = {
+    id: orcamentoEditandoId || ("orc_" + Date.now()),
+    numero: existente ? existente.numero : (orcamentoNumeroAtual || gerarNumero(lista)),
+    criadoEm: existente ? existente.criadoEm : agora,
+    atualizadoEm: agora,
+    cliente: document.getElementById("cliente").value || "Cliente não informado",
+    peca: document.getElementById("peca").value || "Peça personalizada",
+    material: dados.materialNome,
+    total: dados.total,
+    subtotal: dados.subtotal,
+    desconto: dados.desconto,
+    form: coletarFormulario(),
+    imagemPeca: imagemPeca,
+    dados: dados
+  };
+  const novaLista = [registro, ...lista.filter(o => o.id !== registro.id)];
+  registrarNumeroUsado(registro.numero);
+  gravarOrcamentos(novaLista);
+  orcamentoEditandoId = registro.id;
+  orcamentoNumeroAtual = registro.numero;
+  document.getElementById("orcNumero").textContent = registro.numero;
+  atualizarModoEdicao();
+  alert("Orçamento salvo com sucesso!");
+}
+function abrirOrcamento(id){
+  const lista = lerOrcamentos();
+  const o = lista.find(item => item.id === id);
+  if(!o) return alert("Orçamento não encontrado.");
+  orcamentoEditandoId = o.id;
+  preencherFormulario(o.form);
+  imagemPeca = o.imagemPeca || "";
+  if(imagemPeca){
+    document.getElementById("qFoto").innerHTML = `<img src="${imagemPeca}" style="max-width:100%;max-height:190px;border-radius:10px;object-fit:contain">`;
+  }else{
+    document.getElementById("qFoto").innerHTML = "Imagem da peça<br><small>opcional</small>";
+  }
+  orcamentoNumeroAtual = o.numero || "#00001";
+  document.getElementById("orcNumero").textContent = orcamentoNumeroAtual;
+  mostrarAba("calculadora");
+  atualizarModoEdicao();
+  calcular();
+  window.scrollTo({top:0,behavior:"smooth"});
+}
+function duplicarOrcamento(id){
+  const lista = lerOrcamentos();
+  const o = lista.find(item => item.id === id);
+  if(!o) return;
+  const agora = new Date().toISOString();
+  const copia = JSON.parse(JSON.stringify(o));
+  copia.id = "orc_" + Date.now();
+  copia.numero = gerarNumero(lista);
+  registrarNumeroUsado(copia.numero);
+  copia.criadoEm = agora;
+  copia.atualizadoEm = agora;
+  copia.peca = copia.peca + " - cópia";
+  if(copia.form && copia.form.peca) copia.form.peca = copia.form.peca + " - cópia";
+  gravarOrcamentos([copia, ...lista]);
+  renderizarOrcamentos();
+}
+function excluirOrcamento(id){
+  if(!confirm("Excluir este orçamento salvo?")) return;
+  const lista = lerOrcamentos().filter(o => o.id !== id);
+  gravarOrcamentos(lista);
+  if(orcamentoEditandoId === id){orcamentoEditandoId = null; atualizarModoEdicao();}
+  renderizarOrcamentos();
+}
+function renderizarOrcamentos(){
+  const el = document.getElementById("listaOrcamentos");
+  if(!el) return;
+  const busca = (document.getElementById("buscaOrcamentos")?.value || "").toLowerCase().trim();
+  const lista = lerOrcamentos().filter(o => {
+    const texto = `${o.numero} ${o.cliente} ${o.peca} ${o.material}`.toLowerCase();
+    return !busca || texto.includes(busca);
+  });
+  if(lista.length === 0){
+    el.innerHTML = `<div class="savedItem"><div class="savedTitle">Nenhum orçamento salvo ainda.</div><div class="savedMeta">Calcule um orçamento e clique em SALVAR ORÇAMENTO.</div></div>`;
+    return;
+  }
+  el.innerHTML = lista.map(o => {
+    const data = new Date(o.atualizadoEm || o.criadoEm).toLocaleString("pt-BR");
+    return `<div class="savedItem">
+      <div class="savedItemTop">
+        <div>
+          <div class="savedTitle">${esc(o.numero || "#") } — ${esc(o.cliente)}</div>
+          <div class="savedMeta">Peça: <b>${esc(o.peca)}</b><br>Material: ${esc(o.material || "—")} · Atualizado em: ${esc(data)}</div>
+        </div>
+        <div class="savedPrice">${moeda(Number(o.total || 0))}</div>
+      </div>
+      <div class="savedActions">
+        <button class="primary" onclick="abrirOrcamento('${o.id}')">Abrir / editar</button>
+        <button onclick="duplicarOrcamento('${o.id}')">Duplicar</button>
+        <button onclick="excluirOrcamento('${o.id}')">Excluir</button>
+      </div>
+    </div>`;
+  }).join("");
+}
+function exportarOrcamentos(){
+  const lista = lerOrcamentos();
+  const blob = new Blob([JSON.stringify(lista,null,2)], {type:"application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "backup-orcamentos-keygreen3d.json";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+function importarOrcamentos(event){
+  const file = event.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev){
+    try{
+      const importados = JSON.parse(ev.target.result);
+      if(!Array.isArray(importados)) throw new Error("Formato inválido");
+      const atuais = lerOrcamentos();
+      const juntos = [...importados, ...atuais];
+      const unicos = [];
+      const vistos = new Set();
+      juntos.forEach(o=>{
+        if(o && o.id && !vistos.has(o.id)){
+          vistos.add(o.id);
+          unicos.push(o);
+        }
+      });
+      sincronizarContador(unicos);
+      gravarOrcamentos(unicos);
+      renderizarOrcamentos();
+      atualizarNumeroNovoOrcamento();
+      alert("Backup importado com sucesso!");
+    }catch(e){
+      alert("Não consegui importar este arquivo. Verifique se é um backup da KeyGreen 3D.");
+    }
+    event.target.value = "";
+  };
+  reader.readAsText(file);
 }
 function textoWhats(){
   if(!dados.total) calcular();
@@ -366,8 +637,12 @@ function salvarConfig(){
 function carregarConfig(){
   const raw=localStorage.getItem("keygreen_cfg");
   if(raw){try{const cfg=JSON.parse(raw);Object.keys(cfg).forEach(id=>{if(document.getElementById(id))document.getElementById(id).value=cfg[id];})}catch(e){}}
+  sincronizarContador();
+  atualizarNumeroNovoOrcamento();
   set("dataHoje","Data: "+hoje());
+  atualizarModoEdicao();
   calcular();
+  renderizarOrcamentos();
 }
 window.addEventListener("load",()=>{atualizarPrecoFilamento();carregarConfig();});
 </script>

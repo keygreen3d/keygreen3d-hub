@@ -231,7 +231,7 @@ body{
           <div class="field full"><label>Descrição do serviço</label><textarea id="modelDescricao" placeholder="Descreva o que será desenvolvido..."></textarea></div>
           <div class="field"><label>Prazo estimado</label><input id="modelPrazo" placeholder="Ex: 3 dias úteis"></div>
           <div class="field"><label>Formato de entrega</label><input id="modelFormato" value="Arquivo digital 3D final"></div>
-          <div class="field"><label>Valor da modelagem (R$)</label><input id="modelValor" type="number" step="0.01" value="280"></div>
+          <div class="field"><label>Valor da modelagem (R$)</label><input id="modelValor" type="number" step="0.01" value="280"></div><div class="field"><label>Custo interno (R$)</label><input id="modelCusto" type="number" step="0.01" value="0"><div class="hint">Uso interno para calcular o lucro. Não aparece no orçamento do cliente.</div></div>
           <div class="field"><label>Validade do orçamento</label><input id="modelValidade" value="7 dias"></div>
           <div class="field full"><label>Revisões inclusas</label><input id="modelRevisoes" value="Todas as revisões e ajustes necessários dentro do escopo inicial"></div>
           <div class="field full"><label>Observações / condições</label><textarea id="modelObservacoes">Alterações que modifiquem significativamente o conceito original, as dimensões previamente fornecidas ou o escopo do projeto poderão ser reavaliadas.</textarea></div>
@@ -245,7 +245,7 @@ body{
         <div class="resultRow"><span>Serviço</span><b>Modelagem 3D</b></div>
         <div class="resultRow"><span>Revisões</span><b>Inclusas</b></div>
         <div class="resultRow"><span>Entrega</span><b id="modelResumoFormato">Arquivo digital 3D final</b></div>
-        <div class="priceBox"><small>Investimento</small><div class="big" id="modelResumoValor">R$ 280,00</div></div>
+        <div class="priceBox"><small>Investimento</small><div class="big" id="modelResumoValor">R$ 280,00</div></div><div class="resultRow"><span>Lucro previsto</span><b id="modelResumoLucro">R$ 280,00</b></div>
         <p class="tip">Os orçamentos de modelagem ficam salvos em uma área própria dentro deste Hub e não se misturam com os orçamentos de impressão.</p>
       </section>
 
@@ -301,7 +301,7 @@ function mostrarAba(id){
   document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===id));
   if(id==='modelagem3d'){
     if(typeof atualizarModelagem==='function') atualizarModelagem();
-    if(typeof renderListaModelagem==='function') renderListaModelagem();
+    if(typeof renderizarModelagens==='function') renderizarModelagens();
   }
   if(typeof renderAll==='function') renderAll(false);
 }
@@ -347,11 +347,57 @@ function consolidarVenda(id){const o=state.orcamentos.find(x=>x.id===id);if(!o)r
   state.vendas.unshift(venda);o.status='vendido';o.dataVenda=hojeISO();
   if(baixa&&o.filamentoId){const f=state.filamentos.find(x=>x.id===o.filamentoId);if(f){const pesoBaixar=Number(o.peso||0);f.atual=Math.max(0,Number(f.atual||0)-pesoBaixar);f.movimentos=f.movimentos||[];f.movimentos.unshift({data:hojeISO(),tipo:'baixa por venda',gramas:pesoBaixar,ref:o.numero});venda.baixouEstoque=true;venda.pesoBaixado=pesoBaixar;}}
   save();renderAll();alert('Venda consolidada com sucesso.')}
+
+function consolidarVendaModelagem(id){
+  const arr=modelLoad();
+  const o=arr.find(x=>x.id===id);
+  if(!o)return;
+  if((state.vendas||[]).some(v=>v.modelagemId===o.id)){
+    alert('Este orçamento de modelagem já está como venda consolidada.');
+    return;
+  }
+  const valor=Number(o.valor||0),custo=Number(o.custo||0);
+  if(!confirm(`Consolidar a modelagem ${o.numero||''} como venda?\n\nReceita: ${moeda(valor)}\nCusto interno: ${moeda(custo)}\nLucro: ${moeda(valor-custo)}`))return;
+  const venda={
+    id:uid(),
+    modelagemId:o.id,
+    numero:o.numero,
+    cliente:o.cliente,
+    peca:o.projeto||'Modelagem 3D',
+    material:'Modelagem 3D',
+    valor:valor,
+    custo:custo,
+    lucro:valor-custo,
+    peso:0,
+    tempoHoras:0,
+    dataVenda:hojeISO(),
+    obs:'Venda consolidada a partir de orçamento de modelagem 3D',
+    origem:'modelagem3d',
+    baixouEstoque:false,
+    pesoBaixado:0
+  };
+  state.vendas.unshift(venda);
+  o.status='vendido';
+  o.dataVenda=hojeISO();
+  modelSave(arr);
+  save();
+  renderAll(false);
+  renderizarModelagens();
+  alert('Venda de modelagem consolidada com sucesso e adicionada ao Dashboard.');
+}
+function abrirVendaModelagem(id){
+  mostrarAba('vendas');
+  const venda=(state.vendas||[]).find(v=>v.modelagemId===id);
+  if(venda){
+    const busca=document.getElementById('buscaVenda');
+    if(busca){busca.value=venda.numero||venda.peca||'';renderizarVendas();}
+  }
+}
 function dataBR(d){return d?new Date(d+'T00:00:00').toLocaleDateString('pt-BR'):'-'}
 function formatTempo(h){h=Number(h||0);const hh=Math.floor(h),mm=Math.round((h%1)*60);return `${hh}h${String(mm).padStart(2,'0')}min`}
 function renderizarVendas(){const box=document.getElementById('listaVendas');if(!box)return;const busca=(val('buscaVenda')||'').toLowerCase();const mes=val('filtroVendaMes');let arr=state.vendas.filter(v=>`${v.cliente} ${v.peca} ${v.numero}`.toLowerCase().includes(busca));if(mes)arr=arr.filter(v=>(v.dataVenda||'').slice(0,7)===mes);if(!arr.length){box.innerHTML='<div class="empty">Nenhuma venda consolidada ainda.</div>';return}box.innerHTML=arr.map(v=>{const botao=v.orcamentoId?'Desconsolidar venda':'Excluir venda';const aviso=v.baixouEstoque?' · estoque baixado':'';return `<div class="item"><div class="itemTop"><div><div class="itemTitle">${esc(v.peca)} · ${esc(v.cliente)}</div><div class="itemMeta"><span class="chip chipSale">Venda consolidada</span> ${esc(v.numero||'Manual')} · ${dataBR(v.dataVenda)} · ${esc(v.material||'')} · ${Number(v.peso||0).toFixed(1)} g${aviso}</div></div><div class="itemPrice">${moeda(v.valor)}</div></div><div class="itemMeta">Custo: ${moeda(v.custo)} · Lucro: ${moeda(v.lucro)} · Tempo: ${formatTempo(v.tempoHoras||0)}</div><div class="itemActions"><button class="small danger" onclick="desconsolidarVenda('${v.id}')">${botao}</button></div></div>`}).join('')}
 function salvarVendaManual(){const venda={id:uid(),numero:'MANUAL',cliente:val('manualCliente')||'Cliente',peca:val('manualPeca')||'Venda manual',material:'Manual',valor:num('manualValor'),custo:num('manualCusto'),lucro:num('manualValor')-num('manualCusto'),peso:num('manualPeso'),tempoHoras:0,dataVenda:val('manualData')||hojeISO(),obs:val('manualObs')};state.vendas.unshift(venda);save();renderAll();alert('Venda manual salva.')}
-function desconsolidarVenda(id){const v=state.vendas.find(x=>x.id===id);if(!v)return;const vinculada=!!v.orcamentoId;const msg=vinculada?'Desconsolidar esta venda? O orçamento voltará para aberto.':'Excluir venda manual?';if(!confirm(msg))return;if(vinculada){const o=state.orcamentos.find(x=>x.id===v.orcamentoId);if(o){o.status='orcamento';delete o.dataVenda;}}if(v.baixouEstoque&&v.filamentoId){const f=state.filamentos.find(x=>x.id===v.filamentoId);if(f){const gramas=Number(v.pesoBaixado||v.peso||0);f.atual=Math.min(Number(f.total||Infinity),Number(f.atual||0)+gramas);f.movimentos=f.movimentos||[];f.movimentos.unshift({data:hojeISO(),tipo:'estorno por desconsolidação',gramas:gramas,ref:v.numero||'venda'});}}state.vendas=state.vendas.filter(x=>x.id!==id);save();renderAll();alert(vinculada?'Venda desconsolidada. O orçamento voltou para aberto.':'Venda manual excluída.')}
+function desconsolidarVenda(id){const v=state.vendas.find(x=>x.id===id);if(!v)return;const vinculada=!!v.orcamentoId||!!v.modelagemId;const msg=vinculada?'Desconsolidar esta venda? O orçamento voltará para aberto.':'Excluir venda manual?';if(!confirm(msg))return;if(v.orcamentoId){const o=state.orcamentos.find(x=>x.id===v.orcamentoId);if(o){o.status='orcamento';delete o.dataVenda;}}if(v.modelagemId){const arr=modelLoad();const o=arr.find(x=>x.id===v.modelagemId);if(o){o.status='orcamento';o.dataVenda='';modelSave(arr);}}if(v.baixouEstoque&&v.filamentoId){const f=state.filamentos.find(x=>x.id===v.filamentoId);if(f){const gramas=Number(v.pesoBaixado||v.peso||0);f.atual=Math.min(Number(f.total||Infinity),Number(f.atual||0)+gramas);f.movimentos=f.movimentos||[];f.movimentos.unshift({data:hojeISO(),tipo:'estorno por desconsolidação',gramas:gramas,ref:v.numero||'venda'});}}state.vendas=state.vendas.filter(x=>x.id!==id);save();renderAll();if(typeof renderizarModelagens==='function')renderizarModelagens();alert(vinculada?'Venda desconsolidada. O orçamento voltou para aberto.':'Venda manual excluída.')}
 function excluirVenda(id){desconsolidarVenda(id)}
 function salvarFilamento(){const id=val('stockEditId');const obj={id:id||uid(),material:val('stockMaterial')||'PLA',cor:val('stockCor')||'Sem cor',marca:val('stockMarca'),total:num('stockTotal')||1000,atual:num('stockAtual'),preco:num('stockPreco'),alerta:num('stockAlerta')||150,local:val('stockLocal'),obs:val('stockObs'),movimentos:[]};if(id){const i=state.filamentos.findIndex(f=>f.id===id);state.filamentos[i]={...state.filamentos[i],...obj,movimentos:state.filamentos[i].movimentos||[]}}else state.filamentos.unshift(obj);save();limparFilamento();renderAll();alert('Filamento salvo.')}
 function limparFilamento(){document.getElementById('stockEditId').value='';['stockMaterial','stockCor','stockMarca','stockLocal','stockObs'].forEach(id=>document.getElementById(id).value='');document.getElementById('stockTotal').value=1000;document.getElementById('stockAtual').value=1000;document.getElementById('stockPreco').value=100;document.getElementById('stockAlerta').value=150}
@@ -380,23 +426,60 @@ function modelSave(arr){localStorage.setItem(MODEL_KEY,JSON.stringify(arr))}
 function modelNumero(){let max=0;modelLoad().forEach(o=>{const n=parseInt(String(o.numero||'').replace(/\D/g,''))||0;if(n>max)max=n});return 'MOD-'+String(max+1).padStart(4,'0')}
 function modelVal(id){return (document.getElementById(id)?.value||'').trim()}
 function modelNum(id){return Number(String(document.getElementById(id)?.value||'0').replace(',','.'))||0}
-function modelDados(){return{id:modelEditandoId||uid(),numero:document.getElementById('modelQNumero')?.textContent||modelNumero(),data:hoje(),cliente:modelVal('modelCliente'),contato:modelVal('modelContato'),projeto:modelVal('modelProjeto'),descricao:modelVal('modelDescricao'),prazo:modelVal('modelPrazo'),formato:modelVal('modelFormato'),valor:modelNum('modelValor'),validade:modelVal('modelValidade'),revisoes:modelVal('modelRevisoes'),observacoes:modelVal('modelObservacoes'),imagem:modelImagemData}}
+function modelDados(){const existente=modelEditandoId?modelLoad().find(x=>x.id===modelEditandoId):null;return{id:modelEditandoId||uid(),numero:document.getElementById('modelQNumero')?.textContent||modelNumero(),data:existente?.data||hoje(),cliente:modelVal('modelCliente'),contato:modelVal('modelContato'),projeto:modelVal('modelProjeto'),descricao:modelVal('modelDescricao'),prazo:modelVal('modelPrazo'),formato:modelVal('modelFormato'),valor:modelNum('modelValor'),custo:modelNum('modelCusto'),validade:modelVal('modelValidade'),revisoes:modelVal('modelRevisoes'),observacoes:modelVal('modelObservacoes'),imagem:modelImagemData,status:existente?.status||'orcamento',dataVenda:existente?.dataVenda||''}}
 function atualizarModelagem(){
-  const d=modelDados();set('modelResumoFormato',d.formato||'Arquivo digital 3D final');set('modelResumoValor',moeda(d.valor));set('modelQData','Data: '+hoje());set('modelQCliente',d.cliente||'—');set('modelQContato',d.contato||'—');set('modelQProjeto',d.projeto||'—');set('modelQValidade',d.validade||'—');set('modelQPrazo',d.prazo||'A combinar');set('modelQRevisoes',d.revisoes||'Inclusas');set('modelQFormato',d.formato||'Arquivo digital 3D final');set('modelQDescricao',d.descricao||'Desenvolvimento da modelagem 3D conforme medidas, referências e especificações fornecidas pelo cliente.');set('modelQValorLinha',moeda(d.valor));set('modelQTotal',moeda(d.valor));set('modelQObs',d.observacoes||'—');
+  const d=modelDados();set('modelResumoFormato',d.formato||'Arquivo digital 3D final');set('modelResumoValor',moeda(d.valor));set('modelResumoLucro',moeda(Number(d.valor||0)-Number(d.custo||0)));set('modelQData','Data: '+hoje());set('modelQCliente',d.cliente||'—');set('modelQContato',d.contato||'—');set('modelQProjeto',d.projeto||'—');set('modelQValidade',d.validade||'—');set('modelQPrazo',d.prazo||'A combinar');set('modelQRevisoes',d.revisoes||'Inclusas');set('modelQFormato',d.formato||'Arquivo digital 3D final');set('modelQDescricao',d.descricao||'Desenvolvimento da modelagem 3D conforme medidas, referências e especificações fornecidas pelo cliente.');set('modelQValorLinha',moeda(d.valor));set('modelQTotal',moeda(d.valor));set('modelQObs',d.observacoes||'—');
   const foto=document.getElementById('modelQFoto');if(foto){foto.innerHTML=modelImagemData?`<img src="${modelImagemData}" alt="Referência">`:'Imagem de referência<br><small>(opcional)</small>'}
 }
 function carregarImagemModelagem(ev){const f=ev.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=()=>{modelImagemData=r.result;const p=document.getElementById('modelPreview');p.src=modelImagemData;p.classList.remove('modelHidden');atualizarModelagem()};r.readAsDataURL(f)}
 function salvarModelagem(){atualizarModelagem();let arr=modelLoad();const d=modelDados();if(modelEditandoId){const i=arr.findIndex(x=>x.id===modelEditandoId);if(i>=0)arr[i]=d;else arr.unshift(d)}else{d.numero=modelNumero();modelEditandoId=d.id;arr.unshift(d);set('modelQNumero',d.numero)}modelSave(arr);renderizarModelagens();atualizarModelagem();const m=document.getElementById('modelModoEdicao');m.textContent='Orçamento salvo. Você está editando '+d.numero+'.';m.classList.add('active')}
-function editarModelagem(id){const d=modelLoad().find(x=>x.id===id);if(!d)return;modelEditandoId=d.id;modelImagemData=d.imagem||'';set('modelQNumero',d.numero||modelNumero());[['modelCliente','cliente'],['modelContato','contato'],['modelProjeto','projeto'],['modelDescricao','descricao'],['modelPrazo','prazo'],['modelFormato','formato'],['modelValidade','validade'],['modelRevisoes','revisoes'],['modelObservacoes','observacoes']].forEach(([el,k])=>document.getElementById(el).value=d[k]||'');document.getElementById('modelValor').value=d.valor||0;const p=document.getElementById('modelPreview');if(modelImagemData){p.src=modelImagemData;p.classList.remove('modelHidden')}else p.classList.add('modelHidden');const m=document.getElementById('modelModoEdicao');m.textContent='Editando '+(d.numero||'orçamento')+'.';m.classList.add('active');atualizarModelagem();mostrarAba('modelagem');window.scrollTo({top:0,behavior:'smooth'})}
-function excluirModelagem(id){if(!confirm('Excluir este orçamento de modelagem?'))return;modelSave(modelLoad().filter(x=>x.id!==id));if(modelEditandoId===id)novoModelagem();renderizarModelagens()}
-function novoModelagem(){modelEditandoId='';modelImagemData='';set('modelQNumero',modelNumero());['modelCliente','modelContato','modelProjeto','modelDescricao','modelPrazo'].forEach(id=>document.getElementById(id).value='');document.getElementById('modelFormato').value='Arquivo digital 3D final';document.getElementById('modelValor').value='280';document.getElementById('modelValidade').value='7 dias';document.getElementById('modelRevisoes').value='Todas as revisões e ajustes necessários dentro do escopo inicial';document.getElementById('modelObservacoes').value='Alterações que modifiquem significativamente o conceito original, as dimensões previamente fornecidas ou o escopo do projeto poderão ser reavaliadas.';document.getElementById('modelImagem').value='';document.getElementById('modelPreview').classList.add('modelHidden');const m=document.getElementById('modelModoEdicao');m.classList.remove('active');m.textContent='';atualizarModelagem();renderizarModelagens()}
-function renderizarModelagens(){const q=(modelVal('modelBusca')||'').toLowerCase();const arr=modelLoad().filter(o=>!q||String(o.cliente||'').toLowerCase().includes(q)||String(o.projeto||'').toLowerCase().includes(q));const el=document.getElementById('modelLista');if(!el)return;if(!arr.length){el.innerHTML='<div class="empty">Nenhum orçamento de modelagem salvo.</div>';return}el.innerHTML=arr.map(o=>`<div class="item"><div class="itemTop"><div><div class="itemTitle">${esc(o.projeto||'Modelagem 3D')}</div><div class="itemMeta">${esc(o.numero||'')} • ${esc(o.cliente||'Sem cliente')} • ${esc(o.data||'')}</div></div><div class="itemPrice">${moeda(o.valor)}</div></div><div class="itemActions"><button class="small primary" onclick="editarModelagem('${o.id}')">Editar orçamento</button><button class="small danger" onclick="excluirModelagem('${o.id}')">Excluir</button></div></div>`).join('')}
+function editarModelagem(id){const d=modelLoad().find(x=>x.id===id);if(!d)return;modelEditandoId=d.id;modelImagemData=d.imagem||'';set('modelQNumero',d.numero||modelNumero());[['modelCliente','cliente'],['modelContato','contato'],['modelProjeto','projeto'],['modelDescricao','descricao'],['modelPrazo','prazo'],['modelFormato','formato'],['modelValidade','validade'],['modelRevisoes','revisoes'],['modelObservacoes','observacoes']].forEach(([el,k])=>document.getElementById(el).value=d[k]||'');document.getElementById('modelValor').value=d.valor||0;document.getElementById('modelCusto').value=d.custo||0;const p=document.getElementById('modelPreview');if(modelImagemData){p.src=modelImagemData;p.classList.remove('modelHidden')}else p.classList.add('modelHidden');const m=document.getElementById('modelModoEdicao');m.textContent='Editando '+(d.numero||'orçamento')+'.';m.classList.add('active');atualizarModelagem();mostrarAba('modelagem3d');window.scrollTo({top:0,behavior:'smooth'})}
+function excluirModelagem(id){if((state.vendas||[]).some(v=>v.modelagemId===id)){alert('Este orçamento está vinculado a uma venda. Desconsolide a venda antes de excluir.');return;}if(!confirm('Excluir este orçamento de modelagem?'))return;modelSave(modelLoad().filter(x=>x.id!==id));if(modelEditandoId===id)novoModelagem();renderizarModelagens()}
+function renderizarModelagens(){
+  const q=(modelVal('modelBusca')||'').toLowerCase();
+  const vendidos=new Set((state.vendas||[]).filter(v=>v.modelagemId).map(v=>v.modelagemId));
+  let base=modelLoad();
+  let alterou=false;
+  base.forEach(o=>{
+    const vendido=vendidos.has(o.id);
+    if(vendido&&o.status!=='vendido'){o.status='vendido';alterou=true;}
+    if(!vendido&&o.status==='vendido'){o.status='orcamento';o.dataVenda='';alterou=true;}
+  });
+  if(alterou)modelSave(base);
+  const arr=base.filter(o=>!q||String(o.cliente||'').toLowerCase().includes(q)||String(o.projeto||'').toLowerCase().includes(q));
+  const el=document.getElementById('modelLista');if(!el)return;
+  if(!arr.length){el.innerHTML='<div class="empty">Nenhum orçamento de modelagem salvo.</div>';return}
+  el.innerHTML=arr.map(o=>{
+    const vendido=o.status==='vendido'||vendidos.has(o.id);
+    const lucro=Number(o.valor||0)-Number(o.custo||0);
+    return `<div class="item">
+      <div class="itemTop">
+        <div>
+          <div class="itemTitle">${esc(o.projeto||'Modelagem 3D')}</div>
+          <div class="itemMeta">
+            <span class="chip ${vendido?'chipSale':'chipBudget'}">${vendido?'Venda consolidada':'Orçamento'}</span>
+            ${esc(o.numero||'')} • ${esc(o.cliente||'Sem cliente')} • ${esc(o.data||'')}
+            ${Number(o.custo||0)>0?` • lucro previsto ${moeda(lucro)}`:''}
+          </div>
+        </div>
+        <div class="itemPrice">${moeda(o.valor)}</div>
+      </div>
+      <div class="itemActions">
+        <button class="small primary" onclick="editarModelagem('${o.id}')">Editar orçamento</button>
+        ${vendido
+          ? `<button class="small ghost" onclick="abrirVendaModelagem('${o.id}')">Ver em Vendas</button>`
+          : `<button class="small primary" onclick="consolidarVendaModelagem('${o.id}')">Consolidar venda</button>`}
+        <button class="small danger" onclick="excluirModelagem('${o.id}')">Excluir</button>
+      </div>
+    </div>`
+  }).join('')
+}
 async function copiarModelagemWhatsApp(){atualizarModelagem();const d=modelDados();const txt=`*KEYGREEN 3D - ORÇAMENTO DE MODELAGEM 3D*\n\n*Projeto:* ${d.projeto||'-'}\n*Cliente:* ${d.cliente||'-'}\n*Prazo:* ${d.prazo||'A combinar'}\n*Revisões:* ${d.revisoes||'Inclusas'}\n*Entrega:* ${d.formato||'Arquivo digital 3D final'}\n\n*Investimento: ${moeda(d.valor)}*\n\n${d.observacoes||''}`;try{await navigator.clipboard.writeText(txt);alert('Texto copiado para o WhatsApp.')}catch(e){prompt('Copie o texto:',txt)}}
 function imprimirModelagem(){kgDefinirTituloPDF('modelagem');atualizarModelagem();document.body.classList.add('printModelagem');window.print();setTimeout(()=>document.body.classList.remove('printModelagem'),300)}
 function imprimirOrcamentoOriginal(){document.body.classList.remove('printModelagem');window.print()}
 window.addEventListener('afterprint',()=>document.body.classList.remove('printModelagem'));
 function exportarModelagens(){const blob=new Blob([JSON.stringify(modelLoad(),null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='keygreen3d_modelagens_backup_'+hojeISO()+'.json';a.click();URL.revokeObjectURL(a.href)}
-['modelCliente','modelContato','modelProjeto','modelDescricao','modelPrazo','modelFormato','modelValor','modelValidade','modelRevisoes','modelObservacoes'].forEach(id=>document.getElementById(id)?.addEventListener('input',atualizarModelagem));
+['modelCliente','modelContato','modelProjeto','modelDescricao','modelPrazo','modelFormato','modelValor','modelCusto','modelValidade','modelRevisoes','modelObservacoes'].forEach(id=>document.getElementById(id)?.addEventListener('input',atualizarModelagem));
 set('modelQNumero',modelNumero());set('modelQData','Data: '+hoje());atualizarModelagem();renderizarModelagens();
 
 </script>

@@ -74,6 +74,60 @@ body{
 }
 
 </style>
+
+<style id="kg-print-fix">
+@page{
+  size: A4 portrait !important;
+  margin: 7mm !important;
+}
+@media print{
+  html,body{
+    width:210mm !important;
+    min-width:210mm !important;
+    max-width:210mm !important;
+    height:auto !important;
+  }
+
+  /* Impressão 3D */
+  body:not(.printModelagem) #quoteCard{
+    position:absolute !important;
+    left:0 !important;
+    top:0 !important;
+    width:196mm !important;
+    max-width:196mm !important;
+    min-width:196mm !important;
+    height:auto !important;
+    min-height:0 !important;
+    margin:0 !important;
+    padding:6mm !important;
+    box-shadow:none !important;
+    border-radius:0 !important;
+    overflow:hidden !important;
+    page-break-inside:avoid !important;
+    break-inside:avoid-page !important;
+  }
+
+  /* Modelagem 3D */
+  body.printModelagem #modelQuoteCard{
+    position:absolute !important;
+    left:0 !important;
+    top:0 !important;
+    width:196mm !important;
+    max-width:196mm !important;
+    min-width:196mm !important;
+    height:auto !important;
+    min-height:0 !important;
+    margin:0 !important;
+    padding:6mm !important;
+    box-shadow:none !important;
+    border-radius:0 !important;
+    overflow:hidden !important;
+    page-break-inside:avoid !important;
+    break-inside:avoid-page !important;
+  }
+}
+</style>
+
 </head>
 <body>
 <header class="top">
@@ -338,7 +392,7 @@ function excluirModelagem(id){if(!confirm('Excluir este orçamento de modelagem?
 function novoModelagem(){modelEditandoId='';modelImagemData='';set('modelQNumero',modelNumero());['modelCliente','modelContato','modelProjeto','modelDescricao','modelPrazo'].forEach(id=>document.getElementById(id).value='');document.getElementById('modelFormato').value='Arquivo digital 3D final';document.getElementById('modelValor').value='280';document.getElementById('modelValidade').value='7 dias';document.getElementById('modelRevisoes').value='Todas as revisões e ajustes necessários dentro do escopo inicial';document.getElementById('modelObservacoes').value='Alterações que modifiquem significativamente o conceito original, as dimensões previamente fornecidas ou o escopo do projeto poderão ser reavaliadas.';document.getElementById('modelImagem').value='';document.getElementById('modelPreview').classList.add('modelHidden');const m=document.getElementById('modelModoEdicao');m.classList.remove('active');m.textContent='';atualizarModelagem();renderizarModelagens()}
 function renderizarModelagens(){const q=(modelVal('modelBusca')||'').toLowerCase();const arr=modelLoad().filter(o=>!q||String(o.cliente||'').toLowerCase().includes(q)||String(o.projeto||'').toLowerCase().includes(q));const el=document.getElementById('modelLista');if(!el)return;if(!arr.length){el.innerHTML='<div class="empty">Nenhum orçamento de modelagem salvo.</div>';return}el.innerHTML=arr.map(o=>`<div class="item"><div class="itemTop"><div><div class="itemTitle">${esc(o.projeto||'Modelagem 3D')}</div><div class="itemMeta">${esc(o.numero||'')} • ${esc(o.cliente||'Sem cliente')} • ${esc(o.data||'')}</div></div><div class="itemPrice">${moeda(o.valor)}</div></div><div class="itemActions"><button class="small primary" onclick="editarModelagem('${o.id}')">Editar orçamento</button><button class="small danger" onclick="excluirModelagem('${o.id}')">Excluir</button></div></div>`).join('')}
 async function copiarModelagemWhatsApp(){atualizarModelagem();const d=modelDados();const txt=`*KEYGREEN 3D - ORÇAMENTO DE MODELAGEM 3D*\n\n*Projeto:* ${d.projeto||'-'}\n*Cliente:* ${d.cliente||'-'}\n*Prazo:* ${d.prazo||'A combinar'}\n*Revisões:* ${d.revisoes||'Inclusas'}\n*Entrega:* ${d.formato||'Arquivo digital 3D final'}\n\n*Investimento: ${moeda(d.valor)}*\n\n${d.observacoes||''}`;try{await navigator.clipboard.writeText(txt);alert('Texto copiado para o WhatsApp.')}catch(e){prompt('Copie o texto:',txt)}}
-function imprimirModelagem(){atualizarModelagem();document.body.classList.add('printModelagem');window.print();setTimeout(()=>document.body.classList.remove('printModelagem'),300)}
+function imprimirModelagem(){kgDefinirTituloPDF('modelagem');atualizarModelagem();document.body.classList.add('printModelagem');window.print();setTimeout(()=>document.body.classList.remove('printModelagem'),300)}
 function imprimirOrcamentoOriginal(){document.body.classList.remove('printModelagem');window.print()}
 window.addEventListener('afterprint',()=>document.body.classList.remove('printModelagem'));
 function exportarModelagens(){const blob=new Blob([JSON.stringify(modelLoad(),null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='keygreen3d_modelagens_backup_'+hojeISO()+'.json';a.click();URL.revokeObjectURL(a.href)}
@@ -346,5 +400,30 @@ function exportarModelagens(){const blob=new Blob([JSON.stringify(modelLoad(),nu
 set('modelQNumero',modelNumero());set('modelQData','Data: '+hoje());atualizarModelagem();renderizarModelagens();
 
 </script>
+
+<script id="kg-pdf-title-fix">
+function kgSlugArquivo(txt){
+  return String(txt||'')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/[^a-zA-Z0-9_-]+/g,'_')
+    .replace(/^_+|_+$/g,'')
+    .replace(/_+/g,'_') || 'Orcamento';
+}
+function kgDefinirTituloPDF(tipo){
+  try{
+    let projeto='', numero='';
+    if(tipo==='modelagem'){
+      projeto=(document.getElementById('modelProjeto')?.value || document.getElementById('modelPeca')?.value || 'Modelagem3D');
+      numero=(document.getElementById('modelQNumero')?.textContent || 'MOD');
+    }else{
+      projeto=(document.getElementById('peca')?.value || document.getElementById('nomePeca')?.value || document.getElementById('cliente')?.value || 'Impressao3D');
+      numero=(document.getElementById('qNumero')?.textContent || 'ORC');
+    }
+    document.title='Orcamento_KeyGreen3D_'+kgSlugArquivo(projeto)+'_'+kgSlugArquivo(numero);
+  }catch(e){}
+}
+window.addEventListener('afterprint',()=>{ document.title='KeyGreen 3D | Hub'; });
+</script>
+
 </body>
 </html>
